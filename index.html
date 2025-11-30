@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Memory-Spiel: Farben</title>
+  <style>
+    /* === ОБЩИЙ ФОН И ШРИФТЫ === */
+    body {
+      margin: 0;
+      font-family: 'Comic Sans MS', cursive, sans-serif;
+      background: linear-gradient(135deg, #ff9a9e, #fad0c4, #fbc2eb, #a6c1ee);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 10px;
+      box-sizing: border-box;
+      overflow-x: hidden;
+    }
+
+    h1 {
+      color: #222;
+      text-align: center;
+      font-size: clamp(1.8rem, 5vw, 2.4rem);
+      margin: 10px 0 15px;
+      text-shadow: 2px 2px 3px rgba(0,0,0,0.2);
+    }
+
+    /* === ИГРОВОЕ ПОЛЕ — СТАБИЛЬНОЕ 4x4 === */
+    #game-board {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2%;
+      width: 90vmin;
+      max-width: 400px;
+      aspect-ratio: 1 / 1;
+      margin: 0 auto;
+    }
+
+    .card {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      aspect-ratio: 1 / 1;
+    }
+
+    .card:hover {
+      transform: scale(1.04);
+      box-shadow: 0 5px 12px rgba(0,0,0,0.3);
+    }
+
+    .card.flipped img,
+    .card.matched img {
+      width: 90%;
+      height: auto;
+      pointer-events: none;
+    }
+
+    /* === ЭКРАН САЛЮТА И ВОПРОСА === */
+    #celebration-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(255, 255, 255, 0.96);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      text-align: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    #celebration-text {
+      font-size: clamp(1.6rem, 5vw, 2.3rem);
+      margin-bottom: 15px;
+      color: #222;
+      font-weight: bold;
+    }
+
+    #like-question {
+      font-size: clamp(1.4rem, 4vw, 1.8rem);
+      margin-bottom: 25px;
+      color: #333;
+    }
+
+    .answer-buttons {
+      display: flex;
+      gap: 30px;
+    }
+
+    .answer-btn {
+      padding: 12px 35px;
+      font-size: clamp(1.2rem, 4vw, 1.7rem);
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(to bottom, #ffcc00, #ff8c00);
+      color: white;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      font-weight: bold;
+      transition: transform 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .answer-btn:hover {
+      transform: scale(1.06);
+    }
+
+    /* === АНИМАЦИЯ САЛЮТА === */
+    .confetti {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      animation: fall 2s linear forwards;
+    }
+
+    @keyframes fall {
+      0% { transform: translateY(-50px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+    }
+
+    /* === МОБИЛЬНАЯ АДАПТАЦИЯ === */
+    @media (max-width: 400px) {
+      h1 { font-size: 1.6rem; }
+      #game-board { width: 95vw; max-width: 350px; }
+      .answer-btn { padding: 10px 25px; font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Заголовок -->
+  <h1>Memory-Spiel: Farben 🌈</h1>
+
+  <!-- Игровое поле -->
+  <div id="game-board"></div>
+
+  <!-- Экран салюта -->
+  <div id="celebration-screen">
+    <div id="celebration-text">Das ist ...</div>
+    <div id="like-question">Magst du diese Farbe?</div>
+    <div class="answer-buttons">
+      <button class="answer-btn" onclick="returnToGame(true)">😊 Ja</button>
+      <button class="answer-btn" onclick="returnToGame(false)">😕 Nein</button>
+    </div>
+  </div>
+
+  <!-- === ВАШИ АУДИОФАЙЛЫ — ВСТАВЬТЕ ИХ СЮДА === -->
+  <audio id="audio-rot" src="rot.wav" preload="auto"></audio>
+  <audio id="audio-gelb" src="gelb.wav" preload="auto"></audio>
+  <audio id="audio-grün" src="grün.wav" preload="auto"></audio>
+  <audio id="audio-blau" src="blau.wav" preload="auto"></audio>
+  <audio id="audio-grau" src="grau.wav" preload="auto"></audio>
+  <audio id="audio-weiss" src="weiss.wav" preload="auto"></audio>
+  <audio id="audio-lila" src="lila.wav" preload="auto"></audio>
+  <audio id="audio-orange" src="orange.wav" preload="auto"></audio>
+
+  <script>
+    // === 1. Цвета и глобальные переменные ===
+    const colors = ['rot', 'gelb', 'grün', 'blau', 'grau', 'weiss', 'lila', 'orange'];
+    let cards = [...colors, ...colors];
+    let flippedCards = [];
+    let matchedCount = 0;
+
+    // === 2. Перемешивание ===
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+
+    // === 3. Создание поля ===
+    function createBoard() {
+      const board = document.getElementById('game-board');
+      board.innerHTML = '';
+      cards = shuffle(cards);
+
+      cards.forEach((color, index) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.dataset.color = color;
+
+        const img = document.createElement('img');
+        img.src = `${color}.png`;
+        img.alt = color;
+        img.style.display = 'none';
+
+        card.appendChild(img);
+        card.addEventListener('click', flipCard);
+        board.appendChild(card);
+      });
+    }
+
+    // === 4. Переворот карты ===
+    function flipCard() {
+      if (
+        flippedCards.length >= 2 ||
+        this.classList.contains('flipped') ||
+        this.classList.contains('matched')
+      ) return;
+
+      this.classList.add('flipped');
+      this.querySelector('img').style.display = 'block';
+      flippedCards.push(this);
+
+      if (flippedCards.length === 2) {
+        setTimeout(checkMatch, 600);
+      }
+    }
+
+    // === 5. Проверка совпадения ===
+    function checkMatch() {
+      const [card1, card2] = flippedCards;
+      const color1 = card1.dataset.color;
+      const color2 = card2.dataset.color;
+
+      if (color1 === color2) {
+        card1.classList.add('matched');
+        card2.classList.add('matched');
+        matchedCount += 1;
+        showCelebration(color1);
+      } else {
+        card1.classList.remove('flipped');
+        card2.classList.remove('flipped');
+        card1.querySelector('img').style.display = 'none';
+        card2.querySelector('img').style.display = 'none';
+      }
+
+      flippedCards = [];
+    }
+
+    // === 6. Показ салюта и воспроизведение ВАШЕГО аудио ===
+    function showCelebration(color) {
+      const screen = document.getElementById('celebration-screen');
+      const text = document.getElementById('celebration-text');
+      const question = document.getElementById('like-question');
+
+      text.textContent = `Das ist ${color}.`;
+      question.textContent = `Magst du ${color}?`;
+
+      // Воспроизводим ВАШ аудиофайл — например, rot.mp3
+      const audio = document.getElementById(`audio-${color}`);
+      if (audio) {
+        audio.currentTime = 0;
+        audio.play().catch(e => {
+          console.log("Не удалось воспроизвести аудио:", e);
+          // Если браузер блокирует автовоспроизведение — можно добавить кнопку "включить звук"
+        });
+      }
+
+      createConfetti();
+      screen.style.display = 'flex';
+    }
+
+    // === 7. Салют (конфетти) ===
+    function createConfetti() {
+      const colorsList = ['#ff0000', '#ffff00', '#00ff00', '#0000ff', '#808080', '#ffffff', '#8000ff', '#ffa500'];
+      for (let i = 0; i < 50; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.left = Math.random() * 100 + 'vw';
+        confetti.style.backgroundColor = colorsList[Math.floor(Math.random() * colorsList.length)];
+        confetti.style.animationDuration = (Math.random() * 1.5 + 0.8) + 's';
+        document.body.appendChild(confetti);
+
+        setTimeout(() => {
+          if (confetti.parentNode) confetti.parentNode.removeChild(confetti);
+        }, 2500);
+      }
+    }
+
+    // === 8. Возврат к игре ===
+    function returnToGame(answer) {
+      document.getElementById('celebration-screen').style.display = 'none';
+    }
+
+    // === 9. Запуск игры при загрузке ===
+    window.addEventListener('DOMContentLoaded', () => {
+      createBoard();
+
+      // Для адаптивности: перерисовать при изменении размера окна
+      window.addEventListener('resize', () => {
+        // Можно добавить логику пересоздания, но пока достаточно CSS
+      });
+    });
+  </script>
+</body>
+</html>
